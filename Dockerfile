@@ -54,6 +54,7 @@ COPY --from=timescaledb-builder \
 # Switch to CloudNativePG's unprivileged user (UID 26)
 USER 26
 
-LABEL org.opencontainers.image.title="CloudNativePG TimescaleDB (Bookworm)"
-LABEL org.opencontainers.image.description="PostgreSQL ${PG_MAJOR} with TimescaleDB for AI workloads on Kubernetes"
-LABEL org.opencontainers.image.source="https://github.com/your-org/your-repo"
+LABEL org.opencontainers.image.title "CloudNativePG TimescaleDB (Bookworm)"
+LABEL org.opencontainers.image.description "PostgreSQL ${PG_MAJOR} with TimescaleDB for AI workloads on Kubernetes"
+LABEL org.opencontainers.image.source "https://github.com/Fabienjulio/CloudNativePG-TimescaleDB"
+
