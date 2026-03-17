@@ -1,0 +1,16 @@
+# CloudNativePG ImageCatalog for TimescaleDB
+# Defines available PostgreSQL images for cluster provisioning.
+# Images must be built from the Dockerfile and pushed to a container registry.
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  # Catalog name referenced by Cluster resources (see cluster-timescaledb.yaml)
+  # IMPORTANT: If you change "timescaledb" here, you MUST also update the matching name in cluster-timescaledb.yaml
+  # Both files must use the same catalog name for the cluster to find the image definition
+  name: timescaledb
+  namespace: monitoring
+spec:
+  images:
+    # PostgreSQL 17 image with TimescaleDB extension
+  - major: 17
+    image: ghcr.io/fabienjulio/cloudnativepg-timescaledb:pg17-latest

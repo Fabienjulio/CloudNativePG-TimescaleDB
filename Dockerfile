@@ -8,7 +8,7 @@ ARG PG_MAJOR=17
 # Install TimescaleDB (Bookworm)
 # Installs TimescaleDB extension via apt package manager.
 # TimescaleDB version is determined by the latest available in the apt repository.
-FROM ghcr.io/cloudnative-pg/postgresql:${PG_MAJOR}-bookworm AS timescaledb-builder
+FROM ghcr.io/cloudnative-pg/postgresql:${PG_MAJOR}-standard-bookworm AS timescaledb-builder
 
 ARG PG_MAJOR
 
