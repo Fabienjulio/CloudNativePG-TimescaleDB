@@ -1,19 +1,19 @@
 # CloudNativePG TimescaleDB Image
 
-This repository provides a custom PostgreSQL 17 image packed with the **TimescaleDB** extension. It is specifically built to be used with the [CloudNativePG (CNPG)](https://cloudnative-pg.io/) operator on Kubernetes, optimized for time-series and monitoring workloads.
+A custom PostgreSQL image packed with the **TimescaleDB** extension. It is specifically built to be used with the [CloudNativePG (CNPG)](https://cloudnative-pg.io/) operator on Kubernetes, optimized for time-series and monitoring workloads.
 
-The container images are automatically built and published to the GitHub Container Registry (GHCR) at:
-`ghcr.io/fabienjulio/cloudnativepg-timescaledb:pg17-latest`
+Find the container images at:
+`ghcr.io/fabienjulio/cloudnativepg-timescaledb`
 
 ---
 
-## 🚀 Usage Guide
+## Usage
 
 To use this custom image in your Kubernetes cluster, you must be running the **CloudNativePG** operator.
 
 ### 1. Define the Image Catalog
 
-CloudNativePG uses an `ImageCatalog` to map PostgreSQL major versions to specific container images. Create an `ImageCatalog` in your namespace that points to the GHCR image:
+CloudNativePG uses an `ImageCatalog` to map PostgreSQL major versions to specific container images. Create an `ImageCatalog` in your namespace that points to the ghcr image:
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -37,11 +37,12 @@ kubectl apply -f imagecatalog-timescaledb.yaml
 ### 2. Deploy the Cluster
 
 When creating your CloudNativePG `Cluster` resource, you need to:
+
 1. Reference the custom `imageCatalogRef`.
 2. Ensure the `timescaledb` library is loaded at startup.
 3. Automatically create the extension during bootstrap.
 
-Here is a minimal example:
+Here is a minimal example.
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -82,6 +83,7 @@ spec:
 ```
 
 Apply the cluster:
+
 ```bash
 kubectl apply -f cluster-timescaledb.yaml
 ```
@@ -102,9 +104,7 @@ kubectl exec -it timescaledb-cluster-1 -n monitoring -- psql -U app -d app -c "\
 
 The output should confirm that the `timescaledb` extension is installed.
 
----
-
-## 🗄️ Included Templates
+## Included Templates
 
 If you have cloned this repository, you can find the template manifests in the `kubernetes/` directory:
 
@@ -113,6 +113,11 @@ If you have cloned this repository, you can find the template manifests in the `
 - `kubernetes/cluster-timescaledb.yaml`
 
 You can quickly deploy these templates using the provided bash script:
+
 ```bash
 ./cluster-setup.sh
 ```
+
+## Note
+
+I followed and adapted the [tutorial](https://github.com/timescale/TimescaleDB-CloudNativePG-VectorSearch) repository made by the [TimescaleDB team](https://www.tigerdata.com/blog/deploying-timescaledb-vector-search-cloudnativepg-kubernetes-operator) to only include TimescaleDB.
