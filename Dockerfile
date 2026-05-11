@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     timescaledb-2-postgresql-${PG_MAJOR} \
     && rm -rf /var/lib/apt/lists/*
 
-FROM ghcr.io/cloudnative-pg/postgresql:${PG_MAJOR}-bookworm
+FROM ghcr.io/cloudnative-pg/postgresql:${PG_MAJOR}-standard-bookworm
 
 ARG PG_MAJOR
 
