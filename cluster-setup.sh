@@ -2,7 +2,7 @@
 # =============================================================================
 # TimescaleDB Cluster Setup Script
 # =============================================================================
-# 
+#
 # Steps:
 #   1. Create namespace
 #   2. Deploy custom image catalog
@@ -11,7 +11,7 @@
 #   5. Verify deployment
 # =============================================================================
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -22,6 +22,7 @@ NC='\033[0m' # No Color
 
 NAMESPACE="monitoring"
 CLUSTER_NAME="timescaledb-cluster"
+DATABASE="app"
 
 # =============================================================================
 # Helper Functions
@@ -84,12 +85,12 @@ sleep 5
 # Wait for pods to be created
 print_info "Waiting for pods to be created..."
 for i in {1..60}; do
-    POD_COUNT=$(kubectl get pods -n $NAMESPACE -l cnpg.io/cluster=$CLUSTER_NAME --no-headers 2>/dev/null | wc -l)
+    POD_COUNT=$( (kubectl get pods -n "$NAMESPACE" -l "cnpg.io/cluster=$CLUSTER_NAME" --no-headers 2>/dev/null || true) | wc -l )
     if [ "$POD_COUNT" -gt 0 ]; then
         print_success "Pods created ($POD_COUNT found)"
         break
     fi
-    if [ $i -eq 60 ]; then
+    if [ "$i" -eq 60 ]; then
         print_error "Timeout waiting for pods to be created"
         exit 1
     fi
@@ -98,15 +99,23 @@ done
 
 echo ""
 
-# Wait for all 2 pods to be ready
+# Wait for all pods to be ready
 print_info "Waiting for all pods to be ready..."
 kubectl wait --for=condition=ready pod \
-    -l cnpg.io/cluster=$CLUSTER_NAME \
-    -n $NAMESPACE \
+    -l "cnpg.io/cluster=$CLUSTER_NAME" \
+    -n "$NAMESPACE" \
     --timeout=400s
 
 echo ""
 print_success "All pods are ready!"
+
+# Resolve current primary pod dynamically (falls back to -1 if label is not yet synced)
+PRIMARY_POD=$(kubectl get pod -n "$NAMESPACE" \
+    -l "cnpg.io/cluster=${CLUSTER_NAME},cnpg.io/instanceRole=primary" \
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+if [ -z "$PRIMARY_POD" ]; then
+    PRIMARY_POD="${CLUSTER_NAME}-1"
+fi
 
 # =============================================================================
 # Verification
@@ -116,16 +125,15 @@ print_header "Deployment Verification"
 
 # Show cluster status
 echo "Cluster Status:"
-kubectl get cluster -n $NAMESPACE
+kubectl get cluster -n "$NAMESPACE"
 
 echo ""
 echo "Pod Status:"
-kubectl get pods -n $NAMESPACE -o wide
+kubectl get pods -n "$NAMESPACE" -o wide
 
 echo ""
 echo "Services:"
-kubectl get svc -n $NAMESPACE
-
+kubectl get svc -n "$NAMESPACE"
 
 # =============================================================================
 # Summary
@@ -139,14 +147,14 @@ echo "  • Cluster: $CLUSTER_NAME"
 echo "  • Pods: 2 (1 primary + 1 replica)"
 echo ""
 echo "Connection Details:"
-echo "  • Primary pod: ${CLUSTER_NAME}-1"
-echo "  • Database: postgres (default)"
-echo "  • User: postgres"
+echo "  • Primary pod: $PRIMARY_POD"
+echo "  • Read-Write service: ${CLUSTER_NAME}-rw.${NAMESPACE}.svc"
+echo "  • Database: $DATABASE"
+echo "  • User: app (or superuser postgres via local exec)"
 echo ""
 echo "Next Steps:"
-echo "  1. Run ./initialize-db.sh to set up the sample application"
-echo "  2. Run ./run-capability-tests.sh to validate the deployment"
+echo "  1. Run ./initialize-db.sh to verify extensions and run a hypertable smoke test"
 echo ""
 echo "Quick Test:"
-echo "  kubectl exec -it ${CLUSTER_NAME}-1 -n $NAMESPACE -- psql -U postgres -c '\\dx'"
+echo "  kubectl exec -it $PRIMARY_POD -n $NAMESPACE -- psql -U postgres -d $DATABASE -c '\\dx'"
 echo ""

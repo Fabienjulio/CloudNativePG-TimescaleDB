@@ -1,6 +1,6 @@
 # CloudNativePG TimescaleDB Image
 
-A custom PostgreSQL image packed with the **TimescaleDB** extension. It is specifically built to be used with the [CloudNativePG (CNPG)](https://cloudnative-pg.io/) operator on Kubernetes, optimized for time-series and monitoring workloads.
+A custom PostgreSQL image packed with the **TimescaleDB** and **TimescaleDB Toolkit** (`timescaledb_toolkit`) extensions. It is specifically built to be used with the [CloudNativePG (CNPG)](https://cloudnative-pg.io/) operator on Kubernetes, optimized for time-series and monitoring workloads.
 
 Find the container images at:
 `ghcr.io/fabienjulio/cloudnativepg-timescaledb`
@@ -112,10 +112,11 @@ If you have cloned this repository, you can find the template manifests in the `
 - `kubernetes/imagecatalog-timescaledb.yaml`
 - `kubernetes/cluster-timescaledb.yaml`
 
-You can quickly deploy these templates using the provided bash script:
+You can quickly deploy these templates and verify the database extensions using the provided bash scripts:
 
 ```bash
 ./cluster-setup.sh
+./initialize-db.sh
 ```
 
 ## Note
