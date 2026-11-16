@@ -1,11 +1,12 @@
 # =============================================================================
-# Multi-stage Dockerfile for TimescaleDB + CloudNativePG (Bookworm base)
+# Multi-stage Dockerfile for TimescaleDB + CloudNativePG (Bookworm / Trixie)
 # =============================================================================
 
 ARG PG_MAJOR=17
+ARG OS_CODENAME=bookworm
 
-# Install TimescaleDB & TimescaleDB Toolkit (Bookworm)
-FROM ghcr.io/cloudnative-pg/postgresql:${PG_MAJOR}-standard-bookworm AS timescaledb-builder
+# Install TimescaleDB & TimescaleDB Toolkit
+FROM ghcr.io/cloudnative-pg/postgresql:${PG_MAJOR}-standard-${OS_CODENAME} AS timescaledb-builder
 
 ARG PG_MAJOR
 ARG TS_VERSION=""
@@ -67,9 +68,10 @@ RUN set -eux; \
     fi; \
     rm -rf /var/lib/apt/lists/*
 
-FROM ghcr.io/cloudnative-pg/postgresql:${PG_MAJOR}-standard-bookworm
+FROM ghcr.io/cloudnative-pg/postgresql:${PG_MAJOR}-standard-${OS_CODENAME}
 
 ARG PG_MAJOR
+ARG OS_CODENAME
 
 USER root
 
@@ -87,6 +89,6 @@ COPY --from=timescaledb-builder \
 
 USER 26
 
-LABEL org.opencontainers.image.title="CloudNativePG TimescaleDB (Bookworm)"
+LABEL org.opencontainers.image.title="CloudNativePG TimescaleDB (PG ${PG_MAJOR} - ${OS_CODENAME})"
 LABEL org.opencontainers.image.description="PostgreSQL ${PG_MAJOR} with TimescaleDB and TimescaleDB Toolkit for time-series and monitoring workloads on Kubernetes"
 LABEL org.opencontainers.image.source="https://github.com/Fabienjulio/CloudNativePG-TimescaleDB"

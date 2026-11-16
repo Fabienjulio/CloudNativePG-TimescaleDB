@@ -7,11 +7,11 @@ Find the container images at:
 
 ### Image Tags
 
-Images follow CloudNativePG's tagging structure (without `-standard-`):
+Images are published for **PostgreSQL 17** (`bookworm`) and **PostgreSQL 18** (`trixie`), following CloudNativePG's tagging structure (without `-standard-`):
 
-- `pg<major>` (e.g. `pg17`) — mutable tag pointing to the latest build for that PostgreSQL major version
-- `pg<major>-latest` (e.g. `pg17-latest`) — mutable alias for the latest build of that PostgreSQL major version
-- `pg<major>.<minor>` (e.g. `pg17.12`) — tracks a specific PostgreSQL minor version
+- `pg<major>` (e.g. `pg17`, `pg18`) — mutable tag pointing to the latest build for that PostgreSQL major version
+- `pg<major>-latest` (e.g. `pg17-latest`, `pg18-latest`) — mutable alias for the latest build of that PostgreSQL major version
+- `pg<major>.<minor>` (e.g. `pg17.12`, `pg18.1`) — tracks a specific PostgreSQL minor version
 - `pg<major>.<minor>-<YYYYMMDDHH>` (e.g. `pg17.12-2026111601`) — immutable build-timestamped tag (UTC year + month + day + hour) for reproducible deployments and rollbacks
 
 ---
@@ -34,6 +34,8 @@ spec:
   images:
     - major: 17
       image: ghcr.io/fabienjulio/cloudnativepg-timescaledb:pg17-latest
+    - major: 18
+      image: ghcr.io/fabienjulio/cloudnativepg-timescaledb:pg18-latest
 ```
 
 Apply the catalog:

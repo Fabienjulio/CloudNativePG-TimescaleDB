@@ -14,26 +14,39 @@ on:
       - ".dockerignore"
       - ".github/workflows/docker-publish.yml"
   schedule:
-    # Weekly build every Monday at 03:00 UTC to pick up upstream CNPG & TimescaleDB updates
+    # Weekly build every Monday at 03:00 UTC for both PG 17 and PG 18
     - cron: "0 3 * * 1"
   workflow_dispatch:
     inputs:
       pg_major:
-        description: "PostgreSQL major version"
+        description: "PostgreSQL major version to build (all, 17, or 18)"
         required: false
-        default: "17"
-        type: string
+        default: "all"
+        type: choice
+        options:
+          - "all"
+          - "17"
+          - "18"
 
 env:
   REGISTRY: ghcr.io
-  PG_MAJOR: ${{ inputs.pg_major || '17' }}
 
 jobs:
   build-and-push:
+    name: Build PG ${{ matrix.pg_major }} (${{ matrix.os_codename }})
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.pg_major == 'all' || inputs.pg_major == matrix.pg_major }}
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pg_major: "17"
+            os_codename: "bookworm"
+          - pg_major: "18"
+            os_codename: "trixie"
 
     steps:
       - name: Checkout repository
@@ -49,19 +62,20 @@ jobs:
           load: true
           push: false
           build-args: |
-            PG_MAJOR=${{ env.PG_MAJOR }}
-          tags: local/cloudnativepg-timescaledb:pg${{ env.PG_MAJOR }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            PG_MAJOR=${{ matrix.pg_major }}
+            OS_CODENAME=${{ matrix.os_codename }}
+          tags: local/cloudnativepg-timescaledb:pg${{ matrix.pg_major }}
+          cache-from: type=gha,scope=pg${{ matrix.pg_major }}
+          cache-to: type=gha,mode=max,scope=pg${{ matrix.pg_major }}
 
       - name: Extract versions and compute image tags
         id: version
         run: |
           set -euo pipefail
           IMAGE_REPO=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          LOCAL_IMAGE="local/cloudnativepg-timescaledb:pg${{ env.PG_MAJOR }}"
+          LOCAL_IMAGE="local/cloudnativepg-timescaledb:pg${{ matrix.pg_major }}"
 
-          # Extract exact PostgreSQL major.minor version (e.g., 17.12)
+          # Extract exact PostgreSQL major.minor version (e.g., 17.12 or 18.1)
           PG_FULL_VERSION=$(docker run --rm "$LOCAL_IMAGE" postgres --version | awk '{print $3}' | grep -oE '^[0-9]+\.[0-9]+')
           if [ -z "$PG_FULL_VERSION" ]; then
             echo "Error: Failed to detect PostgreSQL major.minor version" >&2
@@ -69,12 +83,12 @@ jobs:
           fi
 
           # Extract installed TimescaleDB extension version from timescaledb.control
-          TS_EXT_VERSION=$(docker run --rm "$LOCAL_IMAGE" awk -F"'" '/^default_version/ {print $2}' "/usr/share/postgresql/${{ env.PG_MAJOR }}/extension/timescaledb.control")
+          TS_EXT_VERSION=$(docker run --rm "$LOCAL_IMAGE" awk -F"'" '/^default_version/ {print $2}' "/usr/share/postgresql/${{ matrix.pg_major }}/extension/timescaledb.control")
 
           # Generate UTC timestamp (YYYYMMDDHH)
           BUILD_DATE=$(date -u +'%Y%m%d%H')
 
-          TAGS="${IMAGE_REPO}:pg${{ env.PG_MAJOR }},${IMAGE_REPO}:pg${{ env.PG_MAJOR }}-latest,${IMAGE_REPO}:pg${PG_FULL_VERSION},${IMAGE_REPO}:pg${PG_FULL_VERSION}-${BUILD_DATE}"
+          TAGS="${IMAGE_REPO}:pg${{ matrix.pg_major }},${IMAGE_REPO}:pg${{ matrix.pg_major }}-latest,${IMAGE_REPO}:pg${PG_FULL_VERSION},${IMAGE_REPO}:pg${PG_FULL_VERSION}-${BUILD_DATE}"
 
           echo "image_repo=${IMAGE_REPO}" >> "$GITHUB_OUTPUT"
           echo "pg_full_version=${PG_FULL_VERSION}" >> "$GITHUB_OUTPUT"
@@ -89,8 +103,8 @@ jobs:
       - name: Smoke test TimescaleDB and Toolkit extensions
         run: |
           set -euo pipefail
-          LOCAL_IMAGE="local/cloudnativepg-timescaledb:pg${{ env.PG_MAJOR }}"
-          docker run --rm -e "PG_MAJOR=${{ env.PG_MAJOR }}" "$LOCAL_IMAGE" sh -euxc '
+          LOCAL_IMAGE="local/cloudnativepg-timescaledb:pg${{ matrix.pg_major }}"
+          docker run --rm -e "PG_MAJOR=${{ matrix.pg_major }}" "$LOCAL_IMAGE" sh -euxc '
             export PATH="/usr/lib/postgresql/${PG_MAJOR}/bin:$PATH"
             mkdir -p /tmp/pgdata /tmp/pgrun
             initdb -D /tmp/pgdata -U postgres --no-instructions
@@ -124,21 +138,23 @@ jobs:
           context: .
           push: true
           build-args: |
-            PG_MAJOR=${{ env.PG_MAJOR }}
+            PG_MAJOR=${{ matrix.pg_major }}
+            OS_CODENAME=${{ matrix.os_codename }}
           tags: ${{ steps.version.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: type=gha,scope=pg${{ matrix.pg_major }}
 
       - name: Write Job Summary
         run: |
           {
-            echo "### CloudNativePG TimescaleDB Build Summary"
+            echo "### CloudNativePG TimescaleDB Build Summary (PG ${{ matrix.pg_major }} / ${{ matrix.os_codename }})"
+            echo "- **Base Image:** \`ghcr.io/cloudnative-pg/postgresql:${{ matrix.pg_major }}-standard-${{ matrix.os_codename }}\`"
             echo "- **PostgreSQL Version:** \`${{ steps.version.outputs.pg_full_version }}\`"
             echo "- **TimescaleDB Version:** \`${{ steps.version.outputs.ts_version }}\`"
             echo "- **Build Timestamp (UTC):** \`${{ steps.version.outputs.build_date }}\`"
             echo "- **Tags:**"
-            echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ env.PG_MAJOR }}\`"
-            echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ env.PG_MAJOR }}-latest\`"
+            echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ matrix.pg_major }}\`"
+            echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ matrix.pg_major }}-latest\`"
             echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ steps.version.outputs.pg_full_version }}\`"
             echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ steps.version.outputs.pg_full_version }}-${{ steps.version.outputs.build_date }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

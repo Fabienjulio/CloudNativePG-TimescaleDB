@@ -11,6 +11,9 @@ metadata:
   namespace: monitoring
 spec:
   images:
-    # PostgreSQL 17 image with TimescaleDB extension
-  - major: 17
-    image: ghcr.io/fabienjulio/cloudnativepg-timescaledb:pg17-latest
+    # PostgreSQL 17 image with TimescaleDB extension (Bookworm)
+    - major: 17
+      image: ghcr.io/fabienjulio/cloudnativepg-timescaledb:pg17-latest
+    # PostgreSQL 18 image with TimescaleDB extension (Trixie)
+    - major: 18
+      image: ghcr.io/fabienjulio/cloudnativepg-timescaledb:pg18-latest
