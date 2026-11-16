@@ -25,10 +25,6 @@ RUN set -eux; \
         | gpg --dearmor -o /usr/share/keyrings/timescaledb.gpg; \
     echo "deb [signed-by=/usr/share/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/debian/ $(lsb_release -cs) main" \
         > /etc/apt/sources.list.d/timescaledb.list; \
-    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-        | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg; \
-    echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
-        > /etc/apt/sources.list.d/pgdg.list; \
     rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
