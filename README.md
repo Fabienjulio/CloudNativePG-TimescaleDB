@@ -5,6 +5,15 @@ A custom PostgreSQL image packed with the **TimescaleDB** and **TimescaleDB Tool
 Find the container images at:
 `ghcr.io/fabienjulio/cloudnativepg-timescaledb`
 
+### Image Tags
+
+Images follow CloudNativePG's tagging structure (without `-standard-`):
+
+- `pg<major>` (e.g. `pg17`) — mutable tag pointing to the latest build for that PostgreSQL major version
+- `pg<major>-latest` (e.g. `pg17-latest`) — mutable alias for the latest build of that PostgreSQL major version
+- `pg<major>.<minor>` (e.g. `pg17.12`) — tracks a specific PostgreSQL minor version
+- `pg<major>.<minor>-<YYYYMMDDHH>` (e.g. `pg17.12-2026111601`) — immutable build-timestamped tag (UTC year + month + day + hour) for reproducible deployments and rollbacks
+
 ---
 
 ## Usage

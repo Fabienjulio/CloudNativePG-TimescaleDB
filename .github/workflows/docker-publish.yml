@@ -1,13 +1,32 @@
-name: Build and Publish release
+name: Build and Publish Release
 
 on:
   push:
     branches: ["main"]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/docker-publish.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/docker-publish.yml"
+  schedule:
+    # Weekly build every Monday at 03:00 UTC to pick up upstream CNPG & TimescaleDB updates
+    - cron: "0 3 * * 1"
   workflow_dispatch:
+    inputs:
+      pg_major:
+        description: "PostgreSQL major version"
+        required: false
+        default: "17"
+        type: string
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  PG_MAJOR: ${{ inputs.pg_major || '17' }}
 
 jobs:
   build-and-push:
@@ -15,7 +34,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
 
     steps:
       - name: Checkout repository
@@ -24,29 +42,103 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to the Container registry
+      - name: Build image locally for verification
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          build-args: |
+            PG_MAJOR=${{ env.PG_MAJOR }}
+          tags: local/cloudnativepg-timescaledb:pg${{ env.PG_MAJOR }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract versions and compute image tags
+        id: version
+        run: |
+          set -euo pipefail
+          IMAGE_REPO=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          LOCAL_IMAGE="local/cloudnativepg-timescaledb:pg${{ env.PG_MAJOR }}"
+
+          # Extract exact PostgreSQL major.minor version (e.g., 17.12)
+          PG_FULL_VERSION=$(docker run --rm "$LOCAL_IMAGE" postgres --version | awk '{print $3}' | grep -oE '^[0-9]+\.[0-9]+')
+          if [ -z "$PG_FULL_VERSION" ]; then
+            echo "Error: Failed to detect PostgreSQL major.minor version" >&2
+            exit 1
+          fi
+
+          # Extract installed TimescaleDB extension version from timescaledb.control
+          TS_EXT_VERSION=$(docker run --rm "$LOCAL_IMAGE" awk -F"'" '/^default_version/ {print $2}' "/usr/share/postgresql/${{ env.PG_MAJOR }}/extension/timescaledb.control")
+
+          # Generate UTC timestamp (YYYYMMDDHH)
+          BUILD_DATE=$(date -u +'%Y%m%d%H')
+
+          TAGS="${IMAGE_REPO}:pg${{ env.PG_MAJOR }},${IMAGE_REPO}:pg${{ env.PG_MAJOR }}-latest,${IMAGE_REPO}:pg${PG_FULL_VERSION},${IMAGE_REPO}:pg${PG_FULL_VERSION}-${BUILD_DATE}"
+
+          echo "image_repo=${IMAGE_REPO}" >> "$GITHUB_OUTPUT"
+          echo "pg_full_version=${PG_FULL_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "ts_version=${TS_EXT_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "build_date=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+          echo "Detected PostgreSQL version: ${PG_FULL_VERSION}"
+          echo "Detected TimescaleDB version: ${TS_EXT_VERSION}"
+          echo "Computed tags: ${TAGS}"
+
+      - name: Smoke test TimescaleDB and Toolkit extensions
+        run: |
+          set -euo pipefail
+          LOCAL_IMAGE="local/cloudnativepg-timescaledb:pg${{ env.PG_MAJOR }}"
+          docker run --rm -e "PG_MAJOR=${{ env.PG_MAJOR }}" "$LOCAL_IMAGE" sh -euxc '
+            export PATH="/usr/lib/postgresql/${PG_MAJOR}/bin:$PATH"
+            mkdir -p /tmp/pgdata /tmp/pgrun
+            initdb -D /tmp/pgdata -U postgres --no-instructions
+            pg_ctl -D /tmp/pgdata -o "-c shared_preload_libraries=timescaledb -c listen_addresses= -c unix_socket_directories=/tmp/pgrun" -w start
+            psql -h /tmp/pgrun -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE EXTENSION timescaledb CASCADE;"
+            psql -h /tmp/pgrun -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE EXTENSION timescaledb_toolkit CASCADE;"
+            psql -h /tmp/pgrun -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE TABLE ts_smoke (time TIMESTAMPTZ NOT NULL, val DOUBLE PRECISION); SELECT create_hypertable('\''ts_smoke'\'', by_range('\''time'\'')); INSERT INTO ts_smoke VALUES (NOW(), 1.0);"
+            pg_ctl -D /tmp/pgdata -m fast -w stop
+          '
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract OCI metadata labels
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.actor }}/cloudnativepg-timescaledb
-          tags: |
-            type=raw,value=pg17-latest
-            type=sha,prefix=pg17-
+          images: ${{ steps.version.outputs.image_repo }}
+          labels: |
+            org.opencontainers.image.version=pg${{ steps.version.outputs.pg_full_version }}-ts${{ steps.version.outputs.ts_version }}
 
-      - name: Build and push Docker image
-        id: build-and-push
-        uses: docker/build-push-action@v5
+      - name: Push verified image to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            PG_MAJOR=${{ env.PG_MAJOR }}
+          tags: ${{ steps.version.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+
+      - name: Write Job Summary
+        run: |
+          {
+            echo "### CloudNativePG TimescaleDB Build Summary"
+            echo "- **PostgreSQL Version:** \`${{ steps.version.outputs.pg_full_version }}\`"
+            echo "- **TimescaleDB Version:** \`${{ steps.version.outputs.ts_version }}\`"
+            echo "- **Build Timestamp (UTC):** \`${{ steps.version.outputs.build_date }}\`"
+            echo "- **Tags:**"
+            echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ env.PG_MAJOR }}\`"
+            echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ env.PG_MAJOR }}-latest\`"
+            echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ steps.version.outputs.pg_full_version }}\`"
+            echo "  - \`${{ steps.version.outputs.image_repo }}:pg${{ steps.version.outputs.pg_full_version }}-${{ steps.version.outputs.build_date }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
