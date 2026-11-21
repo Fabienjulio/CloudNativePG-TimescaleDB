@@ -83,11 +83,11 @@ kubectl exec -n monitoring timescaledb-cluster-1 -- psql -U postgres -d app -c "
 
 ## Example Manifests & Scripts
 
-This repository includes ready-to-use manifests and helper scripts for a 2-node cluster in the `monitoring` namespace:
+This repository includes ready-to-use manifests and helper scripts for a 2-instance cluster (1 primary, 1 replica) in the `monitoring` namespace:
 
 - [kubernetes/namespace.yaml](kubernetes/namespace.yaml) — `monitoring` namespace
 - [kubernetes/imagecatalog-timescaledb.yaml](kubernetes/imagecatalog-timescaledb.yaml) — `ImageCatalog` for PostgreSQL 17 and 18
-- [kubernetes/cluster-timescaledb.yaml](kubernetes/cluster-timescaledb.yaml) — 2-node `Cluster` with memory and TimescaleDB parameters tuned for 2 GiB pods
+- [kubernetes/cluster-timescaledb.yaml](kubernetes/cluster-timescaledb.yaml) — 2-instance `Cluster` with memory and TimescaleDB parameters tuned for 2 GiB pods
 - [cluster-setup.sh](cluster-setup.sh) — applies the manifests and waits for cluster readiness
 - [initialize-db.sh](initialize-db.sh) — ensures both extensions are enabled and runs a rolled-back hypertable smoke test
 

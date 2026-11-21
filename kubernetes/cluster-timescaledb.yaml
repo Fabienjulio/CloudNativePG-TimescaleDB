@@ -1,12 +1,12 @@
 # CloudNativePG Cluster with TimescaleDB
-# Deploys a 2-nodes PostgreSQL cluster optimized for time-series
+# Deploys a 2-instance PostgreSQL cluster optimized for time-series
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: timescaledb-cluster
   namespace: monitoring
 spec:
-  # 2-node cluster for high availability and read scaling
+  # 2-instance cluster (1 primary, 1 replica) for high availability and read scaling
   instances: 2
 
   # References the custom image catalog with TimescaleDB
