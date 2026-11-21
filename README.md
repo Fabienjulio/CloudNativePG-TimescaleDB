@@ -1,28 +1,31 @@
-# CloudNativePG TimescaleDB Image
+# CloudNativePG TimescaleDB
 
-A custom PostgreSQL image packed with the **TimescaleDB** and **TimescaleDB Toolkit** (`timescaledb_toolkit`) extensions. It is specifically built to be used with the [CloudNativePG (CNPG)](https://cloudnative-pg.io/) operator on Kubernetes, optimized for time-series and monitoring workloads.
+[![Build](https://img.shields.io/github/actions/workflow/status/Fabienjulio/CloudNativePG-TimescaleDB/docker-publish.yml?branch=main&label=build)](https://github.com/Fabienjulio/CloudNativePG-TimescaleDB/actions/workflows/docker-publish.yml)
+[![Pulls](https://ghcr-badge.elias.eu.org/shield/Fabienjulio/CloudNativePG-TimescaleDB/cloudnativepg-timescaledb)](https://github.com/Fabienjulio/CloudNativePG-TimescaleDB/pkgs/container/cloudnativepg-timescaledb)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17%20%7C%2018-4169E1?logo=postgresql&logoColor=white)](#images)
+[![Last Commit](https://img.shields.io/github/last-commit/Fabienjulio/CloudNativePG-TimescaleDB)](https://github.com/Fabienjulio/CloudNativePG-TimescaleDB/commits/main)
 
-Find the container images at:
-`ghcr.io/fabienjulio/cloudnativepg-timescaledb`
+PostgreSQL container images built on the official [CloudNativePG](https://cloudnative-pg.io/) `standard` images with [TimescaleDB](https://github.com/timescale/timescaledb) and [TimescaleDB Toolkit](https://github.com/timescale/timescaledb-toolkit) preinstalled.
 
-### Image Tags
+## Images
 
-Images are published for **PostgreSQL 17** (`bookworm`) and **PostgreSQL 18** (`trixie`), following CloudNativePG's tagging structure (without `-standard-`):
+Published to GitHub Container Registry at `ghcr.io/fabienjulio/cloudnativepg-timescaledb`.
 
-- `pg<major>` (e.g. `pg17`, `pg18`) — mutable tag pointing to the latest build for that PostgreSQL major version
-- `pg<major>-latest` (e.g. `pg17-latest`, `pg18-latest`) — mutable alias for the latest build of that PostgreSQL major version
-- `pg<major>.<minor>` (e.g. `pg17.12`, `pg18.1`) — tracks a specific PostgreSQL minor version
-- `pg<major>.<minor>-<YYYYMMDDHH>` (e.g. `pg17.12-2026111601`) — immutable build-timestamped tag (UTC year + month + day + hour) for reproducible deployments and rollbacks
+| PostgreSQL | Base Image | Floating Tags | Immutable Tag Format |
+| --- | --- | --- | --- |
+| 17 | `ghcr.io/cloudnative-pg/postgresql:17-standard-bookworm` | `pg17`, `pg17-latest`, `pg17.<minor>` | `pg17.<minor>-<YYYYMMDDHH>` |
+| 18 | `ghcr.io/cloudnative-pg/postgresql:18-standard-trixie` | `pg18`, `pg18-latest`, `pg18.<minor>` | `pg18.<minor>-<YYYYMMDDHH>` |
 
----
+- **Extensions**: `timescaledb` and `timescaledb_toolkit`, installed from the official Timescale Debian repository.
+- **Upgrade compatibility**: Retains shared libraries (`.so`) and migration scripts (`.sql`) from the previous 3 TimescaleDB releases (`KEEP_PREV_VERSIONS=3`) so existing clusters can restart across image updates and run `ALTER EXTENSION timescaledb UPDATE`.
+- **Build cadence**: Rebuilt weekly on Mondays at 03:00 UTC and on `Dockerfile`/workflow changes. Every image is smoke-tested (`initdb`, extension creation, and hypertable creation) before being pushed.
+- **Tagging**: Pin immutable `pg<major>.<minor>-<YYYYMMDDHH>` (UTC) tags in production for reproducible deployments and rollbacks.
 
 ## Usage
 
-To use this custom image in your Kubernetes cluster, you must be running the **CloudNativePG** operator.
+Requires the [CloudNativePG operator](https://cloudnative-pg.io/documentation/current/installation_upgrade/) installed in your Kubernetes cluster.
 
-### 1. Define the Image Catalog
-
-CloudNativePG uses an `ImageCatalog` to map PostgreSQL major versions to specific container images. Create an `ImageCatalog` in your namespace that points to the ghcr image:
+### 1. Create an `ImageCatalog`
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -38,22 +41,9 @@ spec:
       image: ghcr.io/fabienjulio/cloudnativepg-timescaledb:pg18-latest
 ```
 
-Apply the catalog:
+### 2. Deploy a `Cluster`
 
-```bash
-
-kubectl apply -f imagecatalog-timescaledb.yaml
-```
-
-### 2. Deploy the Cluster
-
-When creating your CloudNativePG `Cluster` resource, you need to:
-
-1. Reference the custom `imageCatalogRef`.
-2. Ensure the `timescaledb` library is loaded at startup.
-3. Automatically create the extension during bootstrap.
-
-Here is a minimal example.
+Reference the `ImageCatalog`, preload `timescaledb` in `shared_preload_libraries`, and enable the extensions during bootstrap:
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -64,7 +54,6 @@ metadata:
 spec:
   instances: 2
 
-  # 1. Reference the image catalog
   imageCatalogRef:
     apiGroup: postgresql.cnpg.io
     kind: ImageCatalog
@@ -73,63 +62,60 @@ spec:
 
   storage:
     size: 10Gi
-    
+
   postgresql:
-    # 2. Load TimescaleDB at startup
     shared_preload_libraries:
       - timescaledb
-    parameters:
-      # Tune memory settings for your environment
-      work_mem: "128MB"
-      shared_buffers: "512MB"
-      max_connections: "100"
 
   bootstrap:
     initdb:
       database: app
       owner: app
-      # 3. Create the Timescale extension automatically
       postInitApplicationSQL:
         - CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+        - CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit CASCADE;
 ```
 
-Apply the cluster:
-
-```bash
-kubectl apply -f cluster-timescaledb.yaml
-```
-
-### 3. Verify the Deployment
-
-Wait for the CloudNativePG operator to bootstrap the primary and replica pods. You can check the status of your cluster with:
+### 3. Verify
 
 ```bash
 kubectl get cluster timescaledb-cluster -n monitoring
+kubectl exec -n monitoring timescaledb-cluster-1 -- psql -U postgres -d app -c "\dx"
 ```
 
-Once ready, you can connect to the primary database pod and confirm that TimescaleDB is loaded:
+## Example Manifests & Scripts
 
-```bash
-kubectl exec -it timescaledb-cluster-1 -n monitoring -- psql -U app -d app -c "\dx"
-```
+This repository includes ready-to-use manifests and helper scripts for a 2-node cluster in the `monitoring` namespace:
 
-The output should confirm that the `timescaledb` extension is installed.
-
-## Included Templates
-
-If you have cloned this repository, you can find the template manifests in the `kubernetes/` directory:
-
-- `kubernetes/namespace.yaml`
-- `kubernetes/imagecatalog-timescaledb.yaml`
-- `kubernetes/cluster-timescaledb.yaml`
-
-You can quickly deploy these templates and verify the database extensions using the provided bash scripts:
+- [kubernetes/namespace.yaml](kubernetes/namespace.yaml) — `monitoring` namespace
+- [kubernetes/imagecatalog-timescaledb.yaml](kubernetes/imagecatalog-timescaledb.yaml) — `ImageCatalog` for PostgreSQL 17 and 18
+- [kubernetes/cluster-timescaledb.yaml](kubernetes/cluster-timescaledb.yaml) — 2-node `Cluster` with memory and TimescaleDB parameters tuned for 2 GiB pods
+- [cluster-setup.sh](cluster-setup.sh) — applies the manifests and waits for cluster readiness
+- [initialize-db.sh](initialize-db.sh) — ensures both extensions are enabled and runs a rolled-back hypertable smoke test
 
 ```bash
 ./cluster-setup.sh
 ./initialize-db.sh
 ```
 
-## Note
+## Building Locally
 
-I followed and adapted the [tutorial](https://github.com/timescale/TimescaleDB-CloudNativePG-VectorSearch) repository made by the [TimescaleDB team](https://www.tigerdata.com/blog/deploying-timescaledb-vector-search-cloudnativepg-kubernetes-operator) to only include TimescaleDB.
+```bash
+docker build \
+  --build-arg PG_MAJOR=18 \
+  --build-arg OS_CODENAME=trixie \
+  -t cloudnativepg-timescaledb:pg18 .
+```
+
+| Build Argument | Default | Description |
+| --- | --- | --- |
+| `PG_MAJOR` | `17` | PostgreSQL major version (`17`, `18`) |
+| `OS_CODENAME` | `bookworm` | Debian codename matching the CNPG base image (`bookworm`, `trixie`) |
+| `TS_VERSION` | *(latest)* | Pin a specific `timescaledb-2-postgresql-<major>` Debian package version |
+| `KEEP_PREV_VERSIONS` | `3` | Previous TimescaleDB releases retained for in-place upgrades (`0` to disable) |
+
+## References
+
+- Adapted from [timescale/TimescaleDB-CloudNativePG-VectorSearch](https://github.com/timescale/TimescaleDB-CloudNativePG-VectorSearch) ([TigerData blog post](https://www.tigerdata.com/blog/deploying-timescaledb-vector-search-cloudnativepg-kubernetes-operator)), scoped to TimescaleDB and TimescaleDB Toolkit.
+- [CloudNativePG Documentation](https://cloudnative-pg.io/documentation/current/) & [cloudnative-pg/postgres-containers](https://github.com/cloudnative-pg/postgres-containers)
+- [TimescaleDB](https://github.com/timescale/timescaledb) & [TimescaleDB Toolkit](https://github.com/timescale/timescaledb-toolkit)
